@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ซูโดกุคอมพ์ ป.5 - เกม AR วิทยาการคำนวณ</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Font: Mali -->
+    <link href="https://fonts.googleapis.com/css2?family=Mali:ital,wght@0,300;0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
+    <!-- MediaPipe Hands & Camera Utils -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <!-- Canvas Confetti สำหรับเอฟเฟกต์พลุดาวฉลอง -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Mali', cursive, sans-serif;
+            user-select: none;
+            overflow: hidden;
+            touch-action: none;
+        }
+        .bg-pattern {
+            background-color: #f0f9ff;
+            background-image: radial-gradient(#bae6fd 1.5px, transparent 1.5px), radial-gradient(#bae6fd 1.5px, #f0f9ff 1.5px);
+            background-size: 24px 24px;
+            background-position: 0 0, 12px 12px;
+        }
+        @keyframes floatAnim {
+            0% { transform: translateY(0px) rotate(0deg); }
+            50% { transform: translateY(-10px) rotate(3deg); }
+            100% { transform: translateY(0px) rotate(0deg); }
+        }
+        .float-item {
+            animation: floatAnim 4s ease-in-out infinite;
+        }
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-6px); }
+            40%, 80% { transform: translateX(6px); }
+        }
+        .shake-effect {
+            animation: shake 0.4s ease-in-out;
+        }
+        #cursor {
+            pointer-events: none;
+            transition: transform 0.05s linear;
+            z-index: 9999;
+        }
+    </style>
+</head>
+<body class="bg-pattern h-screen w-screen flex flex-col justify-between relative overflow-hidden">
+
+    <!-- กราฟิกตกแต่งลอยไปมา -->
+    <div class="absolute top-4 left-4 text-2xl float-item opacity-60 z-0">🧩</div>
+    <div class="absolute top-6 right-6 text-2xl float-item opacity-60 z-0" style="animation-delay: 1s;">⭐</div>
+    <div class="absolute bottom-16 left-6 text-2xl float-item opacity-60 z-0" style="animation-delay: 2s;">💻</div>
+    <div class="absolute bottom-20 right-6 text-2xl float-item opacity-60 z-0" style="animation-delay: 1.5s;">🏆</div>
+
+    <!-- เคอร์เซอร์มือ AR -->
+    <div id="cursor" class="fixed w-8 h-8 rounded-full border-2 border-pink-500 bg-pink-300/40 flex items-center justify-center text-sm shadow-md hidden">
+        🤏
+    </div>
+
+    <!-- ส่วนหัวข้อหลัก (Compact สำหรับมือถือ) -->
+    <header class="w-full bg-white/90 backdrop-blur-md py-2 px-3 shadow-sm flex justify-between items-center z-20 shrink-0">
+        <div class="flex items-center space-x-2">
+            <span class="text-2xl">🧩</span>
+            <div>
+                <h1 class="text-base sm:text-lg font-bold text-indigo-700 leading-tight">ซูโดกุคอมพ์ ป.5</h1>
+                <p class="text-[10px] text-slate-500">วิชาวิทยาการคำนวณ | ชุดที่ 4</p>
+            </div>
+        </div>
+        <div class="flex items-center space-x-2">
+            <div id="status-box" class="bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full text-xs font-semibold flex items-center space-x-1">
+                <span id="camera-status-dot" class="w-2 h-2 rounded-full bg-red-500 inline-block animate-pulse"></span>
+                <span id="camera-status-text">โหลดกล้อง...</span>
+            </div>
+            <button onclick="toggleFullScreen()" class="bg-indigo-100 hover:bg-indigo-200 text-indigo-700 px-2 py-1 rounded text-xs font-bold transition">⛶ เต็มจอ</button>
+        </div>
+    </header>
+
+    <!-- หน้าจอก่อนเริ่มเกม (Start Screen) -->
+    <div id="start-screen" class="absolute inset-0 bg-white/95 backdrop-blur-md z-50 flex flex-col items-center justify-center p-4 text-center">
+        <div class="bg-gradient-to-br from-indigo-500 to-purple-600 text-white p-6 rounded-2xl shadow-xl max-w-sm w-full border-2 border-white">
+            <div class="text-5xl mb-2">🧩🏆</div>
+            <h2 class="text-2xl font-extrabold mb-1 text-yellow-300">ซูโดกุคอมพ์ ป.5</h2>
+            <p class="text-indigo-100 text-xs mb-4">เกม AR ศึกษาเรียนรู้แบบไม่ต้องแตะจอ ใช้มือควบคุม!</p>
+            
+            <div class="bg-white/10 p-3 rounded-xl text-left text-xs mb-4 space-y-1.5 border border-white/20">
+                <p class="font-bold text-yellow-200">📌 วิธีเล่นด้วยมือ (AR):</p>
+                <p>1. หันหน้ากล้องให้เห็นมือชัดเจน</p>
+                <p>2. <b>จีบนิ้วโป้งกับนิ้วชี้ (👌)</b> เพื่อเลือกตัวเลขด้านล่าง</p>
+                <p>3. <b>จีบนิ้วอีกครั้ง</b> ที่ช่องว่างในตารางเพื่อเติมคำตอบ</p>
+                <p>4. กติกา: ตัวเลขต้องไม่ซ้ำในแถว หลัก และบล็อกเดียวกัน!</p>
+            </div>
+
+            <button id="start-btn" disabled onclick="startGame()" class="w-full bg-gray-400 text-white font-bold py-2.5 rounded-xl text-sm shadow-md cursor-not-allowed transition duration-300">
+                ⏳ กำลังโหลดระบบกล้อง...
+            </button>
+            <p class="text-[10px] text-indigo-200 mt-3">พัฒนาโดย นางสาวพรชิตา ภูล้อมทาง โรงเรียนบ้านวังกระแส</p>
+        </div>
+    </div>
+
+    <!-- หน้าจอเล่นเกมหลัก (จัดให้พอดีหน้าจอมือถือ ไม่ต้องเลื่อนจอ) -->
+    <main class="flex-1 flex flex-col items-center justify-center p-2 z-10 overflow-hidden">
+        <div class="flex flex-col items-center justify-center gap-2 w-full max-w-sm">
+            
+            <!-- วิดีโอเว็บแคม & Canvas สำหรับ AR (ขนาดเล็กกะทัดรัดสำหรับมือถือ) -->
+            <div class="relative rounded-xl overflow-hidden shadow-md border-2 border-indigo-300 bg-black w-[160px] h-[120px] sm:w-[200px] sm:h-[150px] shrink-0">
+                <video id="webcam" class="absolute inset-0 w-full h-full object-cover transform -scale-x-100" autoplay playsinline muted></video>
+                <canvas id="output_canvas" class="absolute inset-0 w-full h-full object-cover transform -scale-x-100"></canvas>
+                <div class="absolute bottom-1 left-1 bg-black/60 text-white px-1.5 py-0.2 rounded text-[9px]">
+                    กล้อง AR (AI Tracking)
+                </div>
+            </div>
+
+            <!-- กระดานเกมซูโดกุ -->
+            <div id="game-board-container" class="bg-white p-4 rounded-2xl shadow-xl border-2 border-indigo-200 flex flex-col items-center w-full max-w-[320px]">
+                <div class="flex justify-between w-full mb-2 text-xs font-bold text-slate-600">
+                    <span id="level-indicator">ด่านที่ 1 / 3</span>
+                    <span id="question-indicator">ข้อที่ 1 / 4</span>
+                    <span id="score-indicator" class="text-amber-500">⭐ คะแนน: 0</span>
+                </div>
+
+                <!-- ตารางซูโดกุ 4x4 (ขนาดพอดีจอมือถือ) -->
+                <div id="sudoku-grid" class="grid grid-cols-4 gap-1.5 mb-3 bg-indigo-100 p-2 rounded-xl border border-indigo-300">
+                    <!-- สร้างผ่าน JS -->
+                </div>
+
+                <!-- แถบเลือกตัวเลขด้านล่าง -->
+                <div class="flex items-center space-x-2">
+                    <span class="text-[11px] text-slate-500 font-bold">เลือกตัวเลข:</span>
+                    <div id="number-palette" class="flex space-x-1.5">
+                        <button onclick="selectNumber(1)" class="num-btn w-10 h-10 bg-white border-2 border-indigo-400 text-indigo-700 font-bold text-base rounded-lg shadow-sm hover:bg-indigo-50 transition flex items-center justify-center">1</button>
+                        <button onclick="selectNumber(2)" class="num-btn w-10 h-10 bg-white border-2 border-indigo-400 text-indigo-700 font-bold text-base rounded-lg shadow-sm hover:bg-indigo-50 transition flex items-center justify-center">2</button>
+                        <button onclick="selectNumber(3)" class="num-btn w-10 h-10 bg-white border-2 border-indigo-400 text-indigo-700 font-bold text-base rounded-lg shadow-sm hover:bg-indigo-50 transition flex items-center justify-center">3</button>
+                        <button onclick="selectNumber(4)" class="num-btn w-10 h-10 bg-white border-2 border-indigo-400 text-indigo-700 font-bold text-base rounded-lg shadow-sm hover:bg-indigo-50 transition flex items-center justify-center">4</button>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- แถบเสียงบอกใบ้ -->
+        <div class="mt-2 bg-white/90 border border-indigo-200 px-3 py-1 rounded-full shadow-sm text-xs text-indigo-700 flex items-center space-x-1.5 shrink-0">
+            <span>🗣️ บอกใบ้:</span>
+            <span class="font-semibold text-slate-700">"เติมตัวเลขไม่ให้ซ้ำในแถว หลัก และกล่อง"</span>
+        </div>
+    </main>
+
+    <!-- Footer เครดิต -->
+    <footer class="w-full text-center py-1 text-[10px] text-slate-500 bg-white/50 backdrop-blur z-20 shrink-0">
+        พัฒนาโดย นางสาวพรชิตา ภูล้อมทาง โรงเรียนบ้านวังกระแส
+    </footer>
+
+    <!-- หน้าต่างสรุปผลเมื่อจบเกม -->
+    <div id="win-screen" class="absolute inset-0 bg-indigo-900/80 backdrop-blur-md z-50 hidden flex flex-col items-center justify-center p-4 text-center">
+        <div class="bg-white p-6 rounded-2xl shadow-xl max-w-xs w-full border-4 border-yellow-400">
+            <div class="text-6xl mb-2 animate-bounce">🏆</div>
+            <h2 class="text-2xl font-extrabold text-indigo-700 mb-1">ยอดเยี่ยมมาก!</h2>
+            <p class="text-slate-600 text-xs mb-4">คุณผ่านครบทุกด่านและแก้ไขซูโดกุคอมพ์ ป.5 สำเร็จแล้ว!</p>
+            <div class="text-2xl font-bold text-amber-500 mb-4" id="final-score">⭐ คะแนนรวม: 12/12</div>
+            <button onclick="restartGame()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 rounded-xl text-sm shadow-md transition">
+                เล่นใหม่อีกครั้ง 🔄
+            </button>
+        </div>
+    </div>
+
+    <!-- เสียงเอฟเฟกต์ (Audio Web API) -->
+    <script>
+        function playSound(type) {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+
+            if (type === 'click') {
+                osc.frequency.setValueAtTime(600, ctx.currentTime);
+                gain.gain.setValueAtTime(0.1, ctx.currentTime);
+                osc.start();
+                osc.stop(ctx.currentTime + 0.08);
+            } else if (type === 'correct') {
+                osc.frequency.setValueAtTime(400, ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(800, ctx.currentTime + 0.15);
+                gain.gain.setValueAtTime(0.2, ctx.currentTime);
+                osc.start();
+                osc.stop(ctx.currentTime + 0.2);
+            } else if (type === 'wrong') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(200, ctx.currentTime);
+                osc.frequency.setValueAtTime(120, ctx.currentTime + 0.1);
+                gain.gain.setValueAtTime(0.2, ctx.currentTime);
+                osc.start();
+                osc.stop(ctx.currentTime + 0.25);
+            }
+        }
+    </script>
+
+    <!-- โค้ดระบบเกมและ MediaPipe Hands -->
+    <script>
+        const levelsData = [
+            // ด่าน 1 (ช่องว่าง 4 ช่อง)
+            [
+                { board: [[1, 0, 3, 4], [3, 4, 1, 2], [2, 1, 4, 3], [4, 3, 2, 0]], blanks: [[0,1], [3,3]] },
+                { board: [[0, 2, 3, 4], [3, 4, 1, 2], [2, 1, 4, 3], [4, 3, 0, 1]], blanks: [[0,0], [3,2]] },
+                { board: [[1, 2, 0, 4], [3, 4, 1, 2], [2, 0, 4, 3], [4, 3, 2, 1]], blanks: [[0,2], [2,1]] },
+                { board: [[1, 2, 3, 0], [3, 0, 1, 2], [2, 1, 4, 3], [4, 3, 2, 1]], blanks: [[0,3], [1,1]] }
+            ],
+            // ด่าน 2 (ช่องว่าง 6 ช่อง)
+            [
+                { board: [[0, 0, 3, 4], [3, 0, 1, 2], [2, 1, 0, 3], [4, 3, 2, 0]], blanks: [[0,0],[0,1],[1,1],[2,2],[3,3]] },
+                { board: [[1, 2, 0, 0], [0, 4, 1, 2], [2, 0, 4, 3], [4, 3, 2, 0]], blanks: [[0,2],[0,3],[1,0],[2,1],[3,3]] },
+                { board: [[0, 2, 3, 0], [3, 0, 1, 2], [2, 1, 0, 3], [4, 0, 2, 1]], blanks: [[0,0],[0,3],[1,1],[2,2],[3,1]] },
+                { board: [[1, 0, 3, 4], [0, 4, 1, 0], [2, 1, 4, 3], [4, 3, 0, 1]], blanks: [[0,1],[1,0],[1,3],[3,2]] }
+            ],
+            // ด่าน 3 (ช่องว่าง 8 ช่อง - ความยากสูงสุด)
+            [
+                { board: [[0, 0, 3, 4], [3, 0, 1, 0], [0, 1, 0, 3], [4, 0, 2, 0]], blanks: [[0,0],[0,1],[1,1],[1,3],[2,0],[2,2],[3,1],[3,3]] },
+                { board: [[1, 0, 0, 4], [0, 4, 1, 0], [2, 0, 0, 3], [0, 3, 2, 0]], blanks: [[0,1],[0,2],[1,0],[1,3],[2,1],[2,2],[3,0],[3,3]] },
+                { board: [[0, 2, 0, 4], [3, 0, 1, 0], [0, 1, 4, 0], [4, 0, 0, 1]], blanks: [[0,0],[0,2],[1,1],[1,3],[2,0],[2,3],[3,1],[3,2]] },
+                { board: [[1, 0, 3, 0], [0, 4, 0, 2], [2, 0, 4, 0], [0, 3, 0, 1]], blanks: [[0,1],[0,3],[1,0],[1,2],[2,1],[2,3],[3,0],[3,2]] }
+            ]
+        ];
+
+        let currentLevel = 0;
+        let currentQIndex = 0;
+        let score = 0;
+        let selectedNumber = null;
+        let currentBoardState = [];
+        let originalBlanks = [];
+
+        function initGame() {
+            loadQuestion();
+        }
+
+        function loadQuestion() {
+            const qData = levelsData[currentLevel][currentQIndex];
+            currentBoardState = qData.board.map(row => [...row]);
+            originalBlanks = qData.blanks;
+
+            document.getElementById('level-indicator').innerText = `ด่านที่ ${currentLevel + 1} / 3`;
+            document.getElementById('question-indicator').innerText = `ข้อที่ ${currentQIndex + 1} / 4`;
+            document.getElementById('score-indicator').innerText = `⭐ คะแนน: ${score}`;
+
+            renderBoard();
+        }
+
+        function renderBoard() {
+            const grid = document.getElementById('sudoku-grid');
+            grid.innerHTML = '';
+
+            for (let r = 0; r < 4; r++) {
+                for (let c = 0; c < 4; c++) {
+                    const cellVal = currentBoardState[r][c];
+                    const isBlank = originalBlanks.some(b => b[0] === r && b[1] === c);
+
+                    const cellDiv = document.createElement('div');
+                    cellDiv.className = `w-11 h-11 sm:w-13 sm:h-13 flex items-center justify-center text-xl font-bold rounded-lg transition duration-200 select-none ${
+                        isBlank && cellVal === 0 
+                            ? 'bg-white border-2 border-dashed border-indigo-400 text-indigo-400 cursor-pointer hover:bg-indigo-50' 
+                            : isBlank && cellVal !== 0
+                            ? 'bg-indigo-50 border-2 border-indigo-500 text-indigo-700 cursor-pointer'
+                            : 'bg-indigo-200 border-2 border-indigo-300 text-slate-700'
+                    }`;
+                    cellDiv.id = `cell-${r}-${c}`;
+                    cellDiv.innerText = cellVal !== 0 ? cellVal : '';
+
+                    if (isBlank) {
+                        cellDiv.onclick = () => handleCellClick(r, c);
+                    }
+                    grid.appendChild(cellDiv);
+                }
+            }
+        }
+
+        function selectNumber(num) {
+            selectedNumber = num;
+            playSound('click');
+            document.querySelectorAll('.num-btn').forEach((btn, idx) => {
+                if (idx + 1 === num) {
+                    btn.classList.add('bg-indigo-600', 'text-white', 'scale-105');
+                    btn.classList.remove('bg-white', 'text-indigo-700');
+                } else {
+                    btn.classList.remove('bg-indigo-600', 'text-white', 'scale-105');
+                    btn.classList.add('bg-white', 'text-indigo-700');
+                }
+            });
+        }
+
+        function handleCellClick(r, c) {
+            if (selectedNumber === null) {
+                alert('กรุณาเลือกตัวเลขด้านล่างก่อนเติมครับ!');
+                return;
+            }
+
+            currentBoardState[r][c] = selectedNumber;
+            renderBoard();
+            checkCompletion();
+        }
+
+        function checkCompletion() {
+            let allFilled = true;
+            originalBlanks.forEach(([r, c]) => {
+                if (currentBoardState[r][c] === 0) allFilled = false;
+            });
+
+            if (allFilled) {
+                if (validateSudoku()) {
+                    playSound('correct');
+                    score += 1;
+                    confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 } });
+
+                    setTimeout(() => {
+                        nextQuestion();
+                    }, 1200);
+                } else {
+                    playSound('wrong');
+                    const boardContainer = document.getElementById('game-board-container');
+                    boardContainer.classList.add('shake-effect');
+                    setTimeout(() => boardContainer.classList.remove('shake-effect'), 400);
+                }
+            }
+        }
+
+        function validateSudoku() {
+            for (let i = 0; i < 4; i++) {
+                let rowSet = new Set();
+                let colSet = new Set();
+                for (let j = 0; j < 4; j++) {
+                    rowSet.add(currentBoardState[i][j]);
+                    colSet.add(currentBoardState[j][i]);
+                }
+                if (rowSet.size !== 4 || colSet.size !== 4) return false;
+            }
+
+            for (let br = 0; br < 4; br += 2) {
+                for (let bc = 0; bc < 4; bc += 2) {
+                    let boxSet = new Set();
+                    for (let r = 0; r < 2; r++) {
+                        for (let c = 0; c < 2; c++) {
+                            boxSet.add(currentBoardState[br + r][bc + c]);
+                        }
+                    }
+                    if (boxSet.size !== 4) return false;
+                }
+            }
+            return true;
+        }
+
+        function nextQuestion() {
+            currentQIndex++;
+            if (currentQIndex >= 4) {
+                currentQIndex = 0;
+                currentLevel++;
+                if (currentLevel >= 3) {
+                    document.getElementById('final-score').innerText = `⭐ คะแนนรวม: ${score}/12`;
+                    document.getElementById('win-screen').classList.remove('hidden');
+                    confetti({ particleCount: 200, spread: 100, origin: { y: 0.4 } });
+                    return;
+                }
+            }
+            loadQuestion();
+        }
+
+        function restartGame() {
+            currentLevel = 0;
+            currentQIndex = 0;
+            score = 0;
+            selectedNumber = null;
+            document.getElementById('win-screen').classList.add('hidden');
+            loadQuestion();
+        }
+
+        function toggleFullScreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                }
+            }
+        }
+
+        function startGame() {
+            document.getElementById('start-screen').style.display = 'none';
+            initGame();
+        }
+
+        // --- ระบบ MediaPipe Hands (AR Hand Tracking) ---
+        const videoElement = document.getElementById('webcam');
+        const canvasElement = document.getElementById('output_canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const cursor = document.getElementById('cursor');
+
+        let lastClickTime = 0;
+
+        function onResults(results) {
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+                const indexTip = landmarks[8];
+                const thumbTip = landmarks[4];
+
+                const x = (1 - indexTip.x) * window.innerWidth;
+                const y = indexTip.y * window.innerHeight;
+
+                cursor.style.display = 'flex';
+                cursor.style.transform = `translate(${x - 16}px, ${y - 16}px)`;
+
+                const distance = Math.hypot(indexTip.x - thumbTip.x, indexTip.y - thumbTip.y);
+
+                if (distance < 0.05) {
+                    cursor.classList.add('bg-pink-600', 'scale-90');
+                    const now = Date.now();
+                    if (now - lastClickTime > 800) {
+                        lastClickTime = now;
+                        triggerElementByCoordinates(x, y);
+                    }
+                } else {
+                    cursor.classList.remove('bg-pink-600', 'scale-90');
+                }
+            } else {
+                cursor.style.display = 'none';
+            }
+            canvasCtx.restore();
+        }
+
+        function triggerElementByCoordinates(x, y) {
+            const element = document.elementFromPoint(x, y);
+            if (element) {
+                if (element.tagName === 'BUTTON' || element.id.startsWith('cell-')) {
+                    element.click();
+                }
+            }
+        }
+
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.6,
+            minTrackingConfidence: 0.6
+        });
+
+        hands.onResults(onResults);
+
+        const camera = new Camera(videoElement, {
+            onFrame: async () => {
+                canvasElement.width = videoElement.videoWidth;
+                canvasElement.height = videoElement.videoHeight;
+                await hands.send({ image: videoElement });
+            },
+            width: 160,
+            height: 120
+        });
+
+        camera.start().then(() => {
+            const statusDot = document.getElementById('camera-status-dot');
+            const statusText = document.getElementById('camera-status-text');
+            const startBtn = document.getElementById('start-btn');
+
+            statusDot.classList.remove('bg-red-500', 'animate-pulse');
+            statusDot.classList.add('bg-green-500');
+            statusText.innerText = 'กล้องพร้อม!';
+
+            startBtn.disabled = false;
+            startBtn.classList.remove('bg-gray-400', 'cursor-not-allowed');
+            startBtn.classList.add('bg-gradient-to-r', 'from-pink-500', 'to-indigo-600', 'hover:opacity-90', 'cursor-pointer', 'transform', 'hover:scale-105');
+            startBtn.innerText = '✨ เริ่มเล่นเกม AR ซูโดกุคอมพ์ ✨';
+        }).catch(err => {
+            console.error("Camera error:", err);
+            document.getElementById('camera-status-text').innerText = 'เปิดกล้องไม่ได้';
+        });
+    </script>
+</body>
+</html>
